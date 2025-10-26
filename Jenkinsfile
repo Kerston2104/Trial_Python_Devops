@@ -45,7 +45,12 @@ pipeline {
         
         stage('4. Deploy App (Azure)') {
             steps {
-                withCredentials([azureServicePrincipal(credentialsId: AZURE_CRED_ID, ...)]) {
+                withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
+                                        subscriptionId: '04af6da8-93f0-4e3f-8823-10577bf91c60', 
+                                        tenantId: 'd6739ca7-e1f1-4780-afcf-48c1ad1ce84b',
+                                        clientIdVariable: 'AZURE_CLIENT_ID',
+                                        clientSecretVariable: 'AZURE_CLIENT_SECRET',
+                                        tenantIdVariable: 'AZURE_TENANT_ID')]) {
                     
                     // Get all the names from Terraform
                     def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
