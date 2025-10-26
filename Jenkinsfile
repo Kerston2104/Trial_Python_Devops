@@ -14,13 +14,25 @@ pipeline {
             }
         }
         
+        // *** THIS STAGE HAS BEEN FIXED ***
         stage('2. Build Infrastructure (Terraform)') {
             steps {
-                // Initialize Terraform (downloads Azure plugin)
-                sh 'terraform init'
-                
-                // Build the infrastructure (the 'main.tf' file)
-                sh 'terraform apply -auto-approve'
+                // We must wrap our Terraform commands with the Azure credentials
+                // so Terraform can log in.
+                withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
+                                                        subscriptionIdVariable: 'ARM_SUBSCRIPTION_ID',
+                                                        tenantIdVariable: 'ARM_TENANT_ID',
+                                                        clientIdVariable: 'ARM_CLIENT_ID',
+                                                        clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
+                    
+                    // Terraform will automatically find and use the ARM_... environment variables
+                    
+                    // Initialize Terraform (downloads Azure plugin)
+                    sh 'terraform init'
+                    
+                    // Build the infrastructure (the 'main.tf' file)
+                    sh 'terraform apply -auto-approve'
+                }
             }
         }
 
@@ -45,6 +57,7 @@ pipeline {
         
         stage('4. Deploy App (Azure)') {
             steps {
+                // This stage was already correct
                 withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
                                                         subscriptionId: '04af6da8-93f0-4e3f-8823-10577bf91c60', 
                                                         tenantId: 'd6739ca7-e1f1-4780-afcf-48c1ad1ce84b',
@@ -52,9 +65,7 @@ pipeline {
                                                         clientSecretVariable: 'AZURE_CLIENT_SECRET',
                                                         tenantIdVariable: 'AZURE_TENANT_ID')]) {
                     
-                    // *** FIX: Added script block here ***
                     script {
-                        // Get all the names from Terraform
                         def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
                         def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
                         def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
@@ -63,8 +74,6 @@ pipeline {
                         // Log in to Azure
                         sh "az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID}"
                         
-                        // This is the final command: 
-                        // Tell the App Service to use our new Docker image!
                         sh """
                         az webapp config container set \
                             --name ${appName} \
@@ -72,19 +81,18 @@ pipeline {
                             --docker-custom-image-name ${imageName} \
                             --docker-registry-server-url https://${acrLogin}
                         """
-                    } // *** FIX: Added closing bracket for script block ***
+                    }
                 }
             }
         }
 
         stage('5. Get URL') {
             steps {
-                // *** FIX: Added script block here ***
                 script {
                     // Get the final website URL from Terraform
                     def siteUrl = sh(script: "terraform output -raw website_url", returnStdout: true).trim()
                     echo "SUCCESS! App is live at: ${siteUrl}"
-                } // *** FIX: Added closing bracket for script block ***
+                }
             }
         }
     }
