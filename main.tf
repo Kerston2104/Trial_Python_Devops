@@ -8,7 +8,7 @@ resource "random_id" "id" { byte_length = 6 }
 # 1. Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = "DemoDevOps-RG"
-  # FIX: Changing from 'westeurope' to 'eastus' to bypass the Azure Policy Restriction (403 Forbidden)
+  # DEFINITIVE FIX: Using 'eastus' as confirmed by your Azure policy check.
   location = "eastus" 
 }
 
