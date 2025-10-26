@@ -35,9 +35,11 @@ resource "azurerm_linux_web_app" "webapp" {
   location            = azurerm_service_plan.plan.location
   service_plan_id     = azurerm_service_plan.plan.id
   
-  site_config {
-    app_settings = {
-      "WEBSITES_PORT" = "8080" # Tell Azure our app uses port 8080
-    }
+site_config {
+    # This block can be empty
+  }
+
+  app_settings = {
+    "WEBSITES_PORT" = "8080" # Tell Azure our app uses port 8080
   }
 }
