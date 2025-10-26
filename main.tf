@@ -10,8 +10,8 @@ resource "random_id" "id" { byte_length = 6 }
 resource "azurerm_resource_group" "rg" {
   # Renamed to 'rg' for Jenkinsfile compatibility
   name     = "DemoDevOps-RG"
-  # CRITICAL FIX: Changed from 'West Europe' to 'eastus' to satisfy Azure Policy.
-  location = "eastus" 
+  # CRITICAL FIX: Changed from 'West Europe' to 'eastus2' to test another common allowed region.
+  location = "eastus2" 
 }
 
 # 2. App Service Plan (The host hardware)
@@ -43,7 +43,9 @@ resource "azurerm_linux_web_app" "webapp" {
   name                = "demo-webapp-${random_id.id.hex}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  app_service_plan_id = azurerm_service_plan.plan.id
+  
+  # *** CRITICAL FIX: Renamed the argument as required by the provider version ***
+  service_plan_id     = azurerm_service_plan.plan.id 
   
   # FIX: Replaced insecure DOCKER_REGISTRY_SERVER_USERNAME/PASSWORD
   # with the required App Service settings for successful container runtime.
