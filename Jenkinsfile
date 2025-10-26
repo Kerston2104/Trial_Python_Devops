@@ -1,0 +1,80 @@
+pipeline {
+    agent any
+
+    environment {
+        // ID of your Azure credentials in Jenkins
+        AZURE_CRED_ID = 'azure-credentials' 
+    }
+
+    stages {
+        stage('1. Checkout Code') {
+            steps {
+                // Get all 5 files from GitHub
+                git branch: 'main', url: 'YOUR_GITHUB_REPO_URL'
+            }
+        }
+        
+        stage('2. Build Infrastructure (Terraform)') {
+            steps {
+                // Initialize Terraform (downloads Azure plugin)
+                sh 'terraform init'
+                
+                // Build the infrastructure (the 'main.tf' file)
+                sh 'terraform apply -auto-approve'
+            }
+        }
+
+        stage('3. Build & Push App (Docker)') {
+            steps {
+                script {
+                    // Get the info for the Container Registry
+                    def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                    def acrUser = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
+                    def acrPass = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
+                    
+                    // Build the Docker image (using the 'Dockerfile')
+                    def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
+                    sh "docker build -t ${imageName} ."
+                    
+                    // Log in and push the image to Azure
+                    sh "docker login ${acrLogin} -u ${acrUser} -p ${acrPass}"
+                    sh "docker push ${imageName}"
+                }
+            }
+        }
+        
+        stage('4. Deploy App (Azure)') {
+            steps {
+                withCredentials([azureServicePrincipal(credentialsId: AZURE_CRED_ID, ...)]) {
+                    
+                    // Get all the names from Terraform
+                    def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                    def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
+                    def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
+                    def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
+
+                    // Log in to Azure
+                    sh "az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID}"
+                    
+                    // This is the final command: 
+                    // Tell the App Service to use our new Docker image!
+                    sh """
+                    az webapp config container set \
+                        --name ${appName} \
+                        --resource-group ${rgName} \
+                        --docker-custom-image-name ${imageName} \
+                        --docker-registry-server-url https://${acrLogin}
+                    """
+                }
+            }
+        }
+
+        stage('5. Get URL') {
+            steps {
+                // Get the final website URL from Terraform
+                def siteUrl = sh(script: "terraform output -raw website_url", returnStdout: true).trim()
+                echo "SUCCESS! App is live at: ${siteUrl}"
+            }
+        }
+    }
+}
