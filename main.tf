@@ -4,11 +4,12 @@ provider "azurerm" {
 
 resource "random_id" "id" { byte_length = 6 }
 
-# 1. A Resource Group (a folder for all our stuff)
+# main.tf
 resource "azurerm_resource_group" "rg" {
   name     = "DemoDevOps-RG"
-  location = "Central India" # <-- CORRECTED REGION
+  location = "westeurope" # <--- CHANGED AGAIN TO MATCH LIST
 }
+# ... rest of the file stays the same ...
 
 # 2. The Azure Container Registry (to store our Docker image)
 resource "azurerm_container_registry" "acr" {
