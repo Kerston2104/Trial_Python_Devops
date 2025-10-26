@@ -9,7 +9,7 @@ pipeline {
     stages {
         stage('1. Checkout Code') {
             steps {
-                // Get all 5 files from GitHub
+                // Get all 6 files from GitHub
                 git branch: 'main', url: 'https://github.com/Kerston2104/Trial_Python_Devops.git'
             }
         }
@@ -46,40 +46,47 @@ pipeline {
         stage('4. Deploy App (Azure)') {
             steps {
                 withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
-                                        subscriptionId: '04af6da8-93f0-4e3f-8823-10577bf91c60', 
-                                        tenantId: 'd6739ca7-e1f1-4780-afcf-48c1ad1ce84b',
-                                        clientIdVariable: 'AZURE_CLIENT_ID',
-                                        clientSecretVariable: 'AZURE_CLIENT_SECRET',
-                                        tenantIdVariable: 'AZURE_TENANT_ID')]) {
+                                                        subscriptionId: '04af6da8-93f0-4e3f-8823-10577bf91c60', 
+                                                        tenantId: 'd6739ca7-e1f1-4780-afcf-48c1ad1ce84b',
+                                                        clientIdVariable: 'AZURE_CLIENT_ID',
+                                                        clientSecretVariable: 'AZURE_CLIENT_SECRET',
+                                                        tenantIdVariable: 'AZURE_TENANT_ID')]) {
                     
-                    // Get all the names from Terraform
-                    def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
-                    def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
-                    def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
+                    // *** FIX: Added script block here ***
+                    script {
+                        // Get all the names from Terraform
+                        def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                        def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
+                        def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
+                        def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
 
-                    // Log in to Azure
-                    sh "az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID}"
-                    
-                    // This is the final command: 
-                    // Tell the App Service to use our new Docker image!
-                    sh """
-                    az webapp config container set \
-                        --name ${appName} \
-                        --resource-group ${rgName} \
-                        --docker-custom-image-name ${imageName} \
-                        --docker-registry-server-url https://${acrLogin}
-                    """
+                        // Log in to Azure
+                        sh "az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID}"
+                        
+                        // This is the final command: 
+                        // Tell the App Service to use our new Docker image!
+                        sh """
+                        az webapp config container set \
+                            --name ${appName} \
+                            --resource-group ${rgName} \
+                            --docker-custom-image-name ${imageName} \
+                            --docker-registry-server-url https://${acrLogin}
+                        """
+                    } // *** FIX: Added closing bracket for script block ***
                 }
             }
         }
 
         stage('5. Get URL') {
             steps {
-                // Get the final website URL from Terraform
-                def siteUrl = sh(script: "terraform output -raw website_url", returnStdout: true).trim()
-                echo "SUCCESS! App is live at: ${siteUrl}"
+                // *** FIX: Added script block here ***
+                script {
+                    // Get the final website URL from Terraform
+                    def siteUrl = sh(script: "terraform output -raw website_url", returnStdout: true).trim()
+                    echo "SUCCESS! App is live at: ${siteUrl}"
+                } // *** FIX: Added closing bracket for script block ***
             }
         }
     }
 }
+
