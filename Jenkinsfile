@@ -10,7 +10,7 @@ pipeline {
         stage('1. Checkout Code') {
             steps {
                 // Get all 5 files from GitHub
-                git branch: 'main', url: 'YOUR_GITHUB_REPO_URL'
+                git branch: 'main', url: 'https://github.com/Kerston2104/Trial_Python_Devops.git'
             }
         }
         
