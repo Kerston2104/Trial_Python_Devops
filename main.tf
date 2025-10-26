@@ -8,8 +8,8 @@ resource "random_id" "id" { byte_length = 6 }
 # 1. Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = "DemoDevOps-RG"
-  # Set to westeurope to avoid the Azure Policy restriction error
-  location = "westeurope" 
+  # FIX: Changing from 'westeurope' to 'eastus' to bypass the Azure Policy Restriction (403 Forbidden)
+  location = "eastus" 
 }
 
 # 2. Azure Container Registry (ACR) - To store our Docker image
@@ -59,7 +59,7 @@ resource "azurerm_linux_web_app" "webapp" {
   }
 }
 
-# 5. Role Assignment: Grant the Web App permission (AcrPull) to pull images from the ACR
+# 5. Grant the Web App (via its System-Assigned Identity) permission to pull from ACR
 resource "azurerm_role_assignment" "app_service_pull" {
   scope                = azurerm_container_registry.acr.id
   role_definition_name = "AcrPull"
