@@ -10,8 +10,8 @@ resource "random_id" "id" { byte_length = 6 }
 resource "azurerm_resource_group" "rg" {
   # Renamed to 'rg' for Jenkinsfile compatibility
   name     = "DemoDevOps-RG"
-  # CRITICAL FIX: Changed from 'West Europe' to 'eastus2' to test another common allowed region.
-  location = "eastus2" 
+  # CRITICAL FIX: Changed the region to 'eastus' which is commonly allowed.
+  location = "eastus"
 }
 
 # 2. App Service Plan (The host hardware)
@@ -22,7 +22,7 @@ resource "azurerm_service_plan" "plan" {
   location            = azurerm_resource_group.rg.location
   os_type             = "Linux"
   # FIX: Changed from 'P1v2' (Premium) to 'B1' (Basic) for cost saving.
-  sku_name            = "B1" 
+  sku_name            = "B1"
 }
 
 # 3. Azure Container Registry (ACR)
@@ -32,7 +32,7 @@ resource "azurerm_container_registry" "acr" {
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   # FIX: Changed from 'Premium' to 'Basic' for cost saving.
-  sku                 = "Basic" 
+  sku                 = "Basic"
   admin_enabled       = true
 }
 
@@ -43,19 +43,19 @@ resource "azurerm_linux_web_app" "webapp" {
   name                = "demo-webapp-${random_id.id.hex}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  
+
   # *** CRITICAL FIX: Renamed the argument as required by the provider version ***
-  service_plan_id     = azurerm_service_plan.plan.id 
-  
+  service_plan_id     = azurerm_service_plan.plan.id
+
   # FIX: Replaced insecure DOCKER_REGISTRY_SERVER_USERNAME/PASSWORD
   # with the required App Service settings for successful container runtime.
   app_settings = {
     # CRITICAL: This tells App Service which internal port the container exposes (must match Dockerfile)
-    "WEBSITES_PORT" = "8080" 
+    "WEBSITES_PORT" = "8080"
     # Standard environment variable also used by your app.py/gunicorn
     "PORT"          = "8080"
     # Enable deployment from the private registry (ACR)
-    "DOCKER_REGISTRY_SERVER_ENABLED" = "true" 
+    "DOCKER_REGISTRY_SERVER_ENABLED" = "true"
   }
 
   site_config {
