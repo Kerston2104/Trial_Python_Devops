@@ -8,7 +8,7 @@ resource "random_id" "id" { byte_length = 6 }
 resource "azurerm_resource_group" "rg" {
   name     = "DemoDevOps-RG"
   # CRITICAL FIX: Changed to the correct Terraform format for the region name.
-  location = "centralus"
+  location = "Central US "
 }
 
 # 2. App Service Plan (The host hardware)
