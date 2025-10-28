@@ -36,32 +36,38 @@ pipeline {
         }
 
 // ... (Lines 1-61 remain the same until the start of Stage 3)
-
-        stage('3. Build and Push Image') {
+stage('3. Build and Push Image') {
             steps {
                 script {
-                    // 1. Get Docker Login Credentials from Terraform Outputs
-                    def acrLoginServer = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    def acrAdminUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
-                    def acrAdminPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
-                    def imageName = "${acrLoginServer}/demo-api:${env.BUILD_NUMBER}"
+                    // --- Get Terraform Outputs (OS-AWARE) ---
+                    def acrLoginServer, acrAdminUsername, acrAdminPassword
 
-                    // 2. Perform Docker Operations based on OS
                     if (isUnix()) {
-                        // Execution for Linux/macOS Agents
-                        // NOTE: Removed the failing 'chmod' command. Docker access should be configured correctly 
-                        // by mounting the socket with the correct user/group in the Jenkins Agent setup (Option A from previous response).
-                        
-                        sh "docker login ${acrLoginServer} -u ${acrAdminUsername} -p ${acrAdminPassword} --password-stdin <<< \"${acrAdminPassword}\""
-                        sh "docker build -t ${imageName} ."
-                        sh "docker push ${imageName}"
+                        acrLoginServer = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                        acrAdminUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
+                        acrAdminPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
                     } else {
-                        // Execution for Windows Agents (Use 'bat')
+                        acrLoginServer = bat(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                        acrAdminUsername = bat(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
+                        acrAdminPassword = bat(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
+                    }
+
+                    def imageName = "${acrLoginServer}/demo-api:${env.BUILD_NUMBER}"
+                    
+                    // --- Perform Docker Operations (OS-AWARE) ---
+                    if (isUnix()) {
+                        echo "Running Docker commands using SH (Linux/macOS compatible)..."
+                        
+                        // FIX: Use 'echo' and pipe ('|') instead of '<<<', which caused the syntax error.
+                        sh """
+                          echo ${acrAdminPassword} | docker login ${acrLoginServer} -u ${acrAdminUsername} --password-stdin
+                          docker build -t ${imageName} .
+                          docker push ${imageName}
+                        """
+                    } else {
                         echo "Running Docker commands using BAT (Windows-compatible)..."
                         
                         // Windows uses bat for command execution
-                        // NOTE: Docker commands work on Windows using 'bat' as Docker Desktop manages the communication pipe.
-                        // We use the simpler method of piping the password into the login command for security and single-line execution.
                         bat "echo ${acrAdminPassword} | docker login ${acrLoginServer} -u ${acrAdminUsername} --password-stdin"
                         bat "docker build -t ${imageName} ."
                         bat "docker push ${imageName}"
@@ -69,21 +75,29 @@ pipeline {
                 }
             }
         }
-
 // ... (Continue to update Stage 4 to use platform-aware commands)
 
-        stage('4. Deploy to Azure WebApp') {
+      stage('4. Deploy to Azure WebApp') {
             steps {
                 script {
-                    def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
-                    def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
-                    def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                    def rgName, appName, acrLogin
+                    
+                    if (isUnix()) {
+                        rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
+                        appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
+                        acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                    } else {
+                        rgName = bat(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
+                        appName = bat(script: "terraform output -raw app_service_name", returnStdout: true).trim()
+                        acrLogin = bat(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                    }
+                    
                     def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
 
-                    // Log in to Azure using the Service Principal (required for az webapp commands)
-                    // The 'az login' command needs to be in a platform-specific block as well
+                    // Log in to Azure using the Service Principal
                     if (isUnix()) {
                         sh "az login --service-principal -u ${ARM_CLIENT_ID} -p ${ARM_CLIENT_SECRET} --tenant ${ARM_TENANT_ID} --output none"
+                        // Multi-line sh command
                         sh """
                         az webapp config container set \\
                             --name ${appName} \\
@@ -94,7 +108,7 @@ pipeline {
                     } else {
                         // Windows uses bat
                         bat "az login --service-principal -u ${ARM_CLIENT_ID} -p ${ARM_CLIENT_SECRET} --tenant ${ARM_TENANT_ID} --output none"
-                        // Note: Line continuation is done using '^' in Windows Batch, not '\'
+                        // Multi-line bat command uses '^' for continuation
                         bat """
                         az webapp config container set ^
                             --name ${appName} ^
