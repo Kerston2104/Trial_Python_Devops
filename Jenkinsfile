@@ -29,12 +29,7 @@ pipeline {
                                                         clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
                     
                     // Terraform will automatically find and use the ARM_... environment variables
-                    
-                    // Initialize Terraform (downloads Azure plugin)
                     sh 'terraform init'
-                    
-                    // Build the infrastructure (the 'main.tf' file)
-                    // -auto-approve ensures no interactive prompt, essential for pipelines
                     sh 'terraform apply -auto-approve'
                 }
             }
@@ -43,39 +38,30 @@ pipeline {
         stage('3. Build and Push Image') {
             steps {
                 script {
+                    // Output variables from Terraform needed for Docker commands
                     def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    def acrUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
-                    def acrPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
+                    def acrUser = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
+                    def acrPass = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
                     def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
 
                     echo "Retrieving ACR credentials from Terraform state..."
-                    
-                    // 1. Log in to ACR
-                    sh "docker login ${acrLogin} --username ${acrUsername} --password ${acrPassword}"
+                    // Perform Docker login using the credentials retrieved from ACR outputs
+                    // Note: Jenkins automatically masks the password in the log
+                    sh "docker login ${acrLogin} --username ${acrUser} --password ${acrPass}"
 
                     echo "Building Docker image: ${imageName}"
-                    
-                    // 2. Build the image
-                    // CRITICAL FIX: Granting temporary write permission to the Docker socket using chmod
-                    // This solves the 'permission denied' error by allowing the Jenkins user to access the host's Docker socket.
-                    sh """
-                        echo 'Temporarily adjusting Docker socket permissions (chmod 666)...'
-                        chmod 666 /var/run/docker.sock
-                        
-                        docker build -t ${imageName} .
-                    """
+                    // *** FIX: REMOVED THE FAILING 'chmod 666 /var/run/docker.sock' COMMAND ***
+                    // We assume the Docker group permissions are already correct on the host.
+                    sh "docker build -t ${imageName} ."
 
-                    // 3. Push the image
                     echo "Pushing Docker image to ACR..."
                     sh "docker push ${imageName}"
                 }
             }
         }
-        
+
         stage('4. Deploy to Azure WebApp') {
             steps {
-                // The 'withCredentials' block injects the ARM_* environment variables 
-                // required by the az CLI for Service Principal login.
                 withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
                                                         subscriptionIdVariable: 'ARM_SUBSCRIPTION_ID',
                                                         tenantIdVariable: 'ARM_TENANT_ID',
