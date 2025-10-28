@@ -19,19 +19,22 @@ pipeline {
         stage('2. Build Infrastructure (Terraform)') {
             steps {
                 echo 'Initializing and applying Azure Infrastructure via Terraform...'
-                // Inject the ARM_* environment variables for the Terraform Azure Provider
-                withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
-                                                        subscriptionIdVariable: 'ARM_SUBSCRIPTION_ID',
-                                                        tenantIdVariable: 'ARM_TENANT_ID',
-                                                        clientIdVariable: 'ARM_CLIENT_ID',
-                                                        clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
-                    
-                    // FIX: Run Terraform commands inside the official Terraform Docker image (resolves 'terraform: not found')
-                    docker.image('hashicorp/terraform:1.7.0').inside {
-                        sh 'terraform init'
-                        sh 'terraform apply -auto-approve'
+                
+                // FIX: Added 'script' block to correctly encapsulate the procedural 'withCredentials' and 'docker.image().inside' steps.
+                script {
+                    withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
+                                                            subscriptionIdVariable: 'ARM_SUBSCRIPTION_ID',
+                                                            tenantIdVariable: 'ARM_TENANT_ID',
+                                                            clientIdVariable: 'ARM_CLIENT_ID',
+                                                            clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
+                        
+                        // Run Terraform commands inside the official Terraform Docker image (resolves 'terraform: not found')
+                        docker.image('hashicorp/terraform:1.7.0').inside {
+                            sh 'terraform init'
+                            sh 'terraform apply -auto-approve'
+                        }
                     }
-                }
+                } // End script block
             }
         }
 
@@ -41,7 +44,6 @@ pipeline {
                     def acrLoginServer, acrAdminUsername, acrAdminPassword
 
                     // Get Terraform Outputs: Must run inside the Terraform container to find the tool.
-                    // This is now correctly scoped within the 'script' block.
                     docker.image('hashicorp/terraform:1.7.0').inside {
                         acrLoginServer = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
                         acrAdminUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
@@ -49,7 +51,7 @@ pipeline {
                     }
                     def imageName = "${acrLoginServer}/demo-api:${env.BUILD_NUMBER}"
                     
-                    // FIX: Clean Docker commands (relying on the successful Windows host fix)
+                    // Clean Docker commands (relies on the successful Windows host fix for permissions)
                     echo "Running clean Docker commands..."
                     
                     sh """
@@ -75,7 +77,7 @@ pipeline {
                     
                     def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
 
-                    // FIX: Run Azure CLI commands inside the official Azure CLI Docker image (resolves 'az: not found')
+                    // Run Azure CLI commands inside the official Azure CLI Docker image (resolves 'az: not found')
                     docker.image('mcr.microsoft.com/azure-cli:2.55.0').inside {
                         // Log in to Azure using the Service Principal
                         sh "az login --service-principal -u ${ARM_CLIENT_ID} -p ${ARM_CLIENT_SECRET} --tenant ${ARM_TENANT_ID} --output none"
