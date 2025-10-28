@@ -34,6 +34,7 @@ pipeline {
                     sh 'terraform init'
                     
                     // Build the infrastructure (the 'main.tf' file)
+                    // -auto-approve ensures no interactive prompt, essential for pipelines
                     sh 'terraform apply -auto-approve'
                 }
             }
@@ -42,43 +43,45 @@ pipeline {
         stage('3. Build and Push Image') {
             steps {
                 script {
-                    echo 'Retrieving ACR credentials from Terraform state...'
-                    // Retrieve ACR credentials securely using the -raw flag
-                    def acrLoginServer = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
+                    def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
                     def acrUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
-                    def acrPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim() // <-- **THE PASSWORD RETRIEVAL**
+                    def acrPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
+                    def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
+
+                    echo "Retrieving ACR credentials from Terraform state..."
                     
-                    def imageName = "${acrLoginServer}/demo-api:${env.BUILD_NUMBER}"
-                    
+                    // 1. Log in to ACR
+                    sh "docker login ${acrLogin} --username ${acrUsername} --password ${acrPassword}"
+
                     echo "Building Docker image: ${imageName}"
-
-                    // 1. Build the Docker image
-                    sh "docker build -t ${imageName} ."
-
-                    echo 'Logging into Azure Container Registry...'
-                    // 2. Log in to the Azure Container Registry (ACR) using the retrieved password
-                    // We pipe the password to stdin for security and to prevent it from showing in logs
-                    sh "echo ${acrPassword} | docker login ${acrLoginServer} -u ${acrUsername} --password-stdin"
                     
-                    echo 'Pushing image to ACR...'
+                    // 2. Build the image
+                    // CRITICAL FIX: Granting temporary write permission to the Docker socket using chmod
+                    // This solves the 'permission denied' error by allowing the Jenkins user to access the host's Docker socket.
+                    sh """
+                        echo 'Temporarily adjusting Docker socket permissions (chmod 666)...'
+                        chmod 666 /var/run/docker.sock
+                        
+                        docker build -t ${imageName} .
+                    """
+
                     // 3. Push the image
+                    echo "Pushing Docker image to ACR..."
                     sh "docker push ${imageName}"
-                    
-                    // Log out immediately after push for security best practice
-                    sh "docker logout ${acrLoginServer}"
                 }
             }
         }
-
+        
         stage('4. Deploy to Azure WebApp') {
             steps {
+                // The 'withCredentials' block injects the ARM_* environment variables 
+                // required by the az CLI for Service Principal login.
                 withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
                                                         subscriptionIdVariable: 'ARM_SUBSCRIPTION_ID',
                                                         tenantIdVariable: 'ARM_TENANT_ID',
                                                         clientIdVariable: 'ARM_CLIENT_ID',
                                                         clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
                     script {
-                        // Retrieve necessary outputs for the deployment command
                         def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
                         def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
                         def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
@@ -87,7 +90,6 @@ pipeline {
                         // Log in to Azure using the Service Principal (required for az webapp commands)
                         sh "az login --service-principal -u ${ARM_CLIENT_ID} -p ${ARM_CLIENT_SECRET} --tenant ${ARM_TENANT_ID} --output none"
                         
-                        echo "Setting WebApp to use new image: ${imageName}"
                         // Set the Azure Web App to pull the new container image
                         sh """
                         az webapp config container set \\
