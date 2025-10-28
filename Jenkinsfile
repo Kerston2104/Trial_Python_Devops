@@ -28,7 +28,12 @@ pipeline {
                                                         clientIdVariable: 'ARM_CLIENT_ID',
                                                         clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
                     
+                    // Terraform will automatically find and use the ARM_... environment variables
+                    
+                    // Initialize Terraform (downloads Azure plugin)
                     sh 'terraform init'
+                    
+                    // Build the infrastructure (the 'main.tf' file)
                     sh 'terraform apply -auto-approve'
                 }
             }
@@ -38,42 +43,44 @@ pipeline {
             steps {
                 script {
                     echo 'Building and pushing Docker image to Azure Container Registry...'
-                    
-                    // Retrieve required credentials from Terraform outputs
+
+                    // CRITICAL FIX 1: Fix the 'permission denied' error by changing socket access.
+                    // This is required when Jenkins is containerized and needs to use the host's Docker daemon.
+                    sh 'sudo chmod 666 /var/run/docker.sock' 
+
+                    // Get outputs needed for Docker build and push
                     def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    def acrUser = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
-                    def acrPass = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
+                    // ACR credentials are sensitive and should be retrieved via output.tf
+                    def acrAdminUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
+                    def acrAdminPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
                     def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
                     
-                    // *** CRITICAL FIX: THE PREVIOUS FAILING 'chmod' COMMAND IS REMOVED HERE. ***
-                    // The fix applied in the PowerShell terminal (usermod -aG docker jenkins)
-                    // handles the permissions permanently.
-
-                    // Build the Docker image
+                    // CRITICAL FIX 2: Log in to ACR before building/pushing.
+                    // Use --password-stdin to safely pipe the password (which is sensitive and masked).
+                    sh "echo ${acrAdminPassword} | docker login ${acrLogin} --username ${acrAdminUsername} --password-stdin"
+                    
+                    // 1. Build the image
                     sh "docker build -t ${imageName} ."
                     
-                    // Log in to Azure Container Registry (ACR)
-                    sh "docker login -u ${acrUser} -p ${acrPass} ${acrLogin}" 
-                    
-                    // Push the tagged image
+                    // 2. Push the image
                     sh "docker push ${imageName}"
-                    
-                    echo "Docker image pushed: ${imageName}"
+
+                    echo "Docker image built and pushed to ${imageName}."
                 }
             }
         }
 
         stage('4. Deploy App (Azure)') {
             steps {
-                echo 'Configuring Azure App Service to use the new Docker image...'
-                // Re-inject Azure Service Principal for Azure CLI commands
+                echo 'Deploying image to Azure App Service...'
+                // Re-wrap in withCredentials for the Azure CLI commands which need the Service Principal
                 withCredentials([azureServicePrincipal(credentialsId: env.AZURE_CRED_ID, 
                                                         subscriptionIdVariable: 'ARM_SUBSCRIPTION_ID',
                                                         tenantIdVariable: 'ARM_TENANT_ID',
                                                         clientIdVariable: 'ARM_CLIENT_ID',
                                                         clientSecretVariable: 'ARM_CLIENT_SECRET')]) {
+                    
                     script {
-                        // Retrieve deployment details from Terraform outputs
                         def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
                         def appName = sh(script: "terraform output -raw app_service_name", returnStdout: true).trim()
                         def rgName = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
