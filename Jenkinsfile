@@ -1,5 +1,4 @@
 pipeline {
-    // We rely on the 'agent any' to use the workspace, and leverage Docker for tools.
     agent any
 
     environment {
@@ -42,6 +41,7 @@ pipeline {
                     def acrLoginServer, acrAdminUsername, acrAdminPassword
 
                     // Get Terraform Outputs: Must run inside the Terraform container to find the tool.
+                    // This is now correctly scoped within the 'script' block.
                     docker.image('hashicorp/terraform:1.7.0').inside {
                         acrLoginServer = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
                         acrAdminUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
@@ -49,8 +49,7 @@ pipeline {
                     }
                     def imageName = "${acrLoginServer}/demo-api:${env.BUILD_NUMBER}"
                     
-                    // FIX: Revert to the clean, simple Docker commands. 
-                    // This relies on the Jenkins container being fixed externally via the 'pipe' volume mount.
+                    // FIX: Clean Docker commands (relying on the successful Windows host fix)
                     echo "Running clean Docker commands..."
                     
                     sh """
