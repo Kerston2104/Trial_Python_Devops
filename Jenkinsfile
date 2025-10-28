@@ -39,30 +39,24 @@ pipeline {
             }
         }
         
-        stage('3. Build & Push App (Docker)') {
+stage('3. Build & Push App (Docker)') {
             steps {
                 script {
                     echo 'Building and pushing Docker image to Azure Container Registry...'
 
-                    // CRITICAL FIX 1: Fix the 'permission denied' error by changing socket access.
-                    // This is required when Jenkins is containerized and needs to use the host's Docker daemon.
-                    sh 'sudo chmod 666 /var/run/docker.sock' 
-
-                    // Get outputs needed for Docker build and push
+                    // 1. Get credentials and outputs
                     def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    // ACR credentials are sensitive and should be retrieved via output.tf
                     def acrAdminUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
                     def acrAdminPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
                     def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
                     
-                    // CRITICAL FIX 2: Log in to ACR before building/pushing.
-                    // Use --password-stdin to safely pipe the password (which is sensitive and masked).
+                    // 2. Log in to ACR (Must happen before build or push if using a private base image)
                     sh "echo ${acrAdminPassword} | docker login ${acrLogin} --username ${acrAdminUsername} --password-stdin"
                     
-                    // 1. Build the image
+                    // 3. Build the image (This should now work without the extra chmod command)
                     sh "docker build -t ${imageName} ."
                     
-                    // 2. Push the image
+                    // 4. Push the image
                     sh "docker push ${imageName}"
 
                     echo "Docker image built and pushed to ${imageName}."
