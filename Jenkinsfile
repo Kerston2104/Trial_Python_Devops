@@ -40,6 +40,7 @@ stage('3. Build and Push Image') {
             steps {
                 script {
                     // --- Get Terraform Outputs (OS-AWARE) ---
+                    // (Ensure you have implemented the OS-aware output fetching from the previous suggestion)
                     def acrLoginServer, acrAdminUsername, acrAdminPassword
 
                     if (isUnix()) {
@@ -51,23 +52,32 @@ stage('3. Build and Push Image') {
                         acrAdminUsername = bat(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
                         acrAdminPassword = bat(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
                     }
-
                     def imageName = "${acrLoginServer}/demo-api:${env.BUILD_NUMBER}"
                     
                     // --- Perform Docker Operations (OS-AWARE) ---
                     if (isUnix()) {
-                        echo "Running Docker commands using SH (Linux/macOS compatible)..."
+                        echo "Running Docker commands using official Docker CLI container (Fixing Permission Error)..."
                         
-                        // FIX: Use 'echo' and pipe ('|') instead of '<<<', which caused the syntax error.
+                        // FIX: Use 'docker run' to execute build/push commands.
+                        // -v /var/run/docker.sock:/var/run/docker.sock maps the socket for access.
+                        // -v ${PWD}:/workspace maps the Jenkins workspace to the container.
+                        // -w /workspace sets the current working directory inside the container.
                         sh """
-                          echo ${acrAdminPassword} | docker login ${acrLoginServer} -u ${acrAdminUsername} --password-stdin
-                          docker build -t ${imageName} .
-                          docker push ${imageName}
+                          docker run --rm \\
+                            -v /var/run/docker.sock:/var/run/docker.sock \\
+                            -v ${PWD}:/workspace \\
+                            -w /workspace \\
+                            docker:cli \\
+                            sh -c " \\
+                              echo ${acrAdminPassword} | docker login ${acrLoginServer} -u ${acrAdminUsername} --password-stdin && \\
+                              docker build -t ${imageName} . && \\
+                              docker push ${imageName} \\
+                            "
                         """
                     } else {
                         echo "Running Docker commands using BAT (Windows-compatible)..."
                         
-                        // Windows uses bat for command execution
+                        // This block should still work if 'isUnix()' ever returns false
                         bat "echo ${acrAdminPassword} | docker login ${acrLoginServer} -u ${acrAdminUsername} --password-stdin"
                         bat "docker build -t ${imageName} ."
                         bat "docker push ${imageName}"
