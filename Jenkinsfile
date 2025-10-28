@@ -35,32 +35,29 @@ pipeline {
             }
         }
 
-        stage('3. Build and Push Image') {
-            steps {
-                script {
-                    // FIX: Temporarily grant read/write access to the Docker socket (666) for the current user.
-                    // This resolves the "permission denied" error at /var/run/docker.sock.
-                    sh "chmod 666 /var/run/docker.sock"
+stage('3. Build and Push Image') {
+    steps {
+        script {
+            // ... variables declarations (acrLogin, appName, rgName) ...
 
-                    def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    def acrUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
-                    def acrPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
-                    def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
-                    
-                    // 1. Login to ACR (NO 'sudo' required after chmod fix)
-                    sh "docker login ${acrLogin} --username ${acrUsername} --password ${acrPassword}"
-                    
-                    // 2. Build the Docker image (NO 'sudo' required after chmod fix)
-                    // Correcting echo message to reflect the Python/Flask application detected in the codebase
-                    echo "Building Python Docker image: ${imageName}"
-                    sh "docker build -t ${imageName} ."
-                    
-                    // 3. Push the image to ACR (NO 'sudo' required after chmod fix)
-                    echo "Pushing Docker image to ACR..."
-                    sh "docker push ${imageName}"
-                }
+            // --- REPLACEMENT FOR ALL sh BLOCKS ---
+            if (isUnix()) {
+                // This branch handles Jenkins agents running on Linux/macOS
+                sh "chmod 666 /var/run/docker.sock" // Still problematic, but included for completeness on Linux
+                sh "docker login ${acrLoginServer} -u ${acrAdminUsername} -p ${acrAdminPassword}"
+                sh "docker build -t ${imageName} ."
+                sh "docker push ${imageName}"
+            } else {
+                // This branch handles Jenkins agents running on Windows
+                // The 'chmod' is skipped entirely. Docker commands work directly via bat/powershell.
+                // NOTE: Use 'bat' for Docker commands as it works well with the Windows Docker client.
+                bat "docker login ${acrLoginServer} -u ${acrAdminUsername} -p ${acrAdminPassword}"
+                bat "docker build -t ${imageName} ."
+                bat "docker push ${imageName}"
             }
         }
+    }
+}
 
 
         stage('4. Deploy to Azure WebApp') {
