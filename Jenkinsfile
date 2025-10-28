@@ -38,27 +38,25 @@ pipeline {
         stage('3. Build and Push Image') {
             steps {
                 script {
-                    // Output variables from Terraform needed for Docker commands
                     def acrLogin = sh(script: "terraform output -raw acr_login_server", returnStdout: true).trim()
-                    def acrUser = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
-                    def acrPass = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
+                    def acrUsername = sh(script: "terraform output -raw acr_admin_username", returnStdout: true).trim()
+                    def acrPassword = sh(script: "terraform output -raw acr_admin_password", returnStdout: true).trim()
                     def imageName = "${acrLogin}/demo-api:${env.BUILD_NUMBER}"
-
-                    echo "Retrieving ACR credentials from Terraform state..."
-                    // Perform Docker login using the credentials retrieved from ACR outputs
-                    // Note: Jenkins automatically masks the password in the log
-                    sh "docker login ${acrLogin} --username ${acrUser} --password ${acrPass}"
-
-                    echo "Building Docker image: ${imageName}"
-                    // *** FIX: REMOVED THE FAILING 'chmod 666 /var/run/docker.sock' COMMAND ***
-                    // We assume the Docker group permissions are already correct on the host.
+                    
+                    // 1. Login to ACR (NO 'sudo' required after host fix)
+                    sh "docker login ${acrLogin} --username ${acrUsername} --password ${acrPassword}"
+                    
+                    // 2. Build the Docker image (NO 'sudo' required after host fix)
+                    echo "Building Next.js Docker image: ${imageName}"
                     sh "docker build -t ${imageName} ."
-
+                    
+                    // 3. Push the image to ACR (NO 'sudo' required after host fix)
                     echo "Pushing Docker image to ACR..."
                     sh "docker push ${imageName}"
                 }
             }
         }
+
 
         stage('4. Deploy to Azure WebApp') {
             steps {
